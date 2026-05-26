@@ -3,8 +3,8 @@ import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db/prisma";
 import { jsonOk, handleApiError } from "@/lib/api/response";
 import { reviewDrillSchema } from "@/lib/validations/schemas";
-import { scheduleNextReview } from "@/lib/drills/spaced-repetition";
 import { problemInclude } from "@/lib/queries/problems";
+import { publishDrillCompleted } from "@/lib/events/publisher";
 
 const QUEUE_LIMIT = 20;
 
@@ -52,77 +52,18 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const data = reviewDrillSchema.parse(body);
-    const now = new Date();
-
-    const result = await prisma.$transaction(async (tx) => {
-      if (data.problemId) {
-        const problem = await tx.problem.findUniqueOrThrow({
-          where: { id: data.problemId },
-          select: { currentInterval: true },
-        });
-        const completedCount = await tx.drillSession.count({ where: { problemId: data.problemId } });
-        const scheduled = scheduleNextReview(
-          { currentInterval: problem.currentInterval, completedCount },
-          data.outcome,
-          now
-        );
-
-        await tx.drillSession.create({
-          data: {
-            userId,
-            problemId: data.problemId,
-            drillType: data.drillType,
-            outcome: data.outcome,
-            durationSeconds: data.durationSeconds ?? null,
-            previousInterval: problem.currentInterval,
-          },
-        });
-
-        return tx.problem.update({
-          where: { id: data.problemId },
-          data: {
-            lastDrilledAt: now,
-            nextDueAt: scheduled.nextDueAt,
-            currentInterval: scheduled.intervalDays,
-          },
-          include: problemInclude,
-        });
-      }
-
-      const tag = await tx.tag.findUniqueOrThrow({
-        where: { id: data.tagId },
-        select: { currentInterval: true },
-      });
-      const completedCount = await tx.drillSession.count({ where: { tagId: data.tagId } });
-      const scheduled = scheduleNextReview(
-        { currentInterval: tag.currentInterval, completedCount },
-        data.outcome,
-        now
-      );
-
-      await tx.drillSession.create({
-        data: {
-          userId,
-          tagId: data.tagId,
-          drillType: data.drillType,
-          outcome: data.outcome,
-          durationSeconds: data.durationSeconds ?? null,
-          previousInterval: tag.currentInterval,
-        },
-      });
-
-      return tx.tag.update({
-        where: { id: data.tagId },
-        data: {
-          drillCount: { increment: 1 },
-          lastDrilledAt: now,
-          nextDueAt: scheduled.nextDueAt,
-          currentInterval: scheduled.intervalDays,
-        },
-      });
+    
+    // Fire and Forget Domain Event (Decouples API from DB processing)
+    await publishDrillCompleted({
+      userId,
+      problemId: data.problemId ?? undefined,
+      tagId: data.tagId ?? undefined,
+      outcome: data.outcome,
+      durationSeconds: data.durationSeconds ?? null,
+      timestamp: new Date(),
     });
 
-    return jsonOk(result);
+    return jsonOk({ status: "processing" }, 202);
   } catch (error) {
     return handleApiError(error);
   }

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ClerkProvider, SignInButton, UserButton } from "@clerk/nextjs";
 import { auth } from "@clerk/nextjs/server";
 import { CommandPalette } from "@/components/ui/CommandPalette";
+import { PostHogProvider } from "@/components/providers/PostHogProvider";
 import "./globals.css";
 
 export const metadata = {
@@ -49,7 +50,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           </div>
         </header>
         <CommandPalette />
-        <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>
+        <PostHogProvider>
+          <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>
+        </PostHogProvider>
       </body>
     </html>
     </ClerkProvider>

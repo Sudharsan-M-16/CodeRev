@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { performFuzzySearch } from "@/lib/db/search";
+import { generateTargetedPlaylist } from "@/lib/recommendations/engine";
 import { jsonOk, handleApiError } from "@/lib/api/response";
 
 export async function GET(request: NextRequest) {
@@ -8,16 +8,10 @@ export async function GET(request: NextRequest) {
     const { userId } = await auth();
     if (!userId) return new Response("Unauthorized", { status: 401 });
 
-    const searchParams = request.nextUrl.searchParams;
-    const query = searchParams.get("q");
+    const limit = parseInt(request.nextUrl.searchParams.get("limit") || "10", 10);
+    const playlist = await generateTargetedPlaylist(userId, limit);
 
-    if (!query || query.length < 2) {
-      return jsonOk({ results: [] });
-    }
-
-    const results = await performFuzzySearch(userId, query);
-
-    return jsonOk({ results });
+    return jsonOk({ playlist });
   } catch (error) {
     return handleApiError(error);
   }

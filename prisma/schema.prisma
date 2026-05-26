@@ -167,8 +167,9 @@ model DrillSession {
   previousInterval Int?
   createdAt        DateTime     @default(now())
 
-  problem Problem? @relation(fields: [problemId], references: [id], onDelete: Cascade)
   tag     Tag?     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  events  SessionEvent[]
+  insights ReplayInsight[]
 
   @@index([problemId, drillType])
   @@index([tagId, drillType])
@@ -227,4 +228,38 @@ model ProblemSetSubscription {
 
   @@id([userId, problemSetId])
   @@index([problemSetId])
+}
+
+enum SessionEventType {
+  NOTE_TYPED
+  CODE_PASTED
+  TAB_SWITCHED
+  HINT_REVEALED
+}
+
+model SessionEvent {
+  id             String           @id @default(cuid())
+  drillSessionId String
+  drillSession   DrillSession     @relation(fields: [drillSessionId], references: [id], onDelete: Cascade)
+  eventType      SessionEventType
+  timestamp      DateTime         @default(now())
+  payload        Json             // Stores diffs, keystrokes, or snapshot state
+  
+  @@index([drillSessionId, timestamp])
+}
+
+model ReplayInsight {
+  id             String       @id @default(cuid())
+  drillSessionId String
+  drillSession   DrillSession @relation(fields: [drillSessionId], references: [id], onDelete: Cascade)
+  type           String       // "HESITATION", "CONTEXT_SWITCHING", "IMPLEMENTATION_FIRST"
+  title          String
+  description    String       @db.Text
+  timestampStart DateTime
+  timestampEnd   DateTime?
+  confidence     Float
+  recommendation String?      @db.Text
+  createdAt      DateTime     @default(now())
+
+  @@index([drillSessionId])
 }

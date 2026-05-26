@@ -3,35 +3,52 @@ import IORedis from "ioredis";
 
 // Centralized Redis Connection for BullMQ
 export const redisConnection = new IORedis(process.env.REDIS_URL || "redis://localhost:6379", {
-  maxRetriesPerRequest: null, // BullMQ requires this to be null
+  maxRetriesPerRequest: null,
 });
+
+// Strict Typings for Event-Driven Payloads
+export type AIJobPayload = 
+  | { type: "auto-tag"; problemId: string; description: string; userId: string }
+  | { type: "generate-embeddings"; problemId: string; userId: string };
+
+export type TelemetryPayload = 
+  | { type: "sync-daily-heatmap"; userId: string }
+  | { type: "sync-radar-chart"; userId: string };
+
+export type IngestPayload = 
+  | { 
+      type: "batch-session-events"; 
+      userId: string; 
+      drillSessionId: string; 
+      events: any[] 
+    };
 
 const defaultQueueOptions: QueueOptions = {
   connection: redisConnection,
   defaultJobOptions: {
-    attempts: 3,
+    attempts: 5, // 5 retries for AI/DB flakiness
     backoff: {
       type: "exponential",
-      delay: 1000,
+      delay: 2000, // Starts at 2s, then 4s, 8s, 16s...
     },
-    removeOnComplete: 100, // Keep last 100 completed jobs for observability
-    removeOnFail: 500,     // Keep last 500 failed jobs for debugging
+    removeOnComplete: 100,
+    removeOnFail: 500, // Keep more failures for debugging Dead Letters
   },
 };
 
-// Create typed queues for different domains
-export const aiAnalysisQueue = new Queue("ai-analysis", defaultQueueOptions);
-export const problemIngestionQueue = new Queue("problem-ingestion", defaultQueueOptions);
-export const telemetryAggregationQueue = new Queue("telemetry-aggregation", defaultQueueOptions);
-export const fsrsSchedulingQueue = new Queue("fsrs-scheduling", defaultQueueOptions);
+// Domain-Specific Queues
+export const aiQueue = new Queue<AIJobPayload>("ai-pipeline", defaultQueueOptions);
+export const telemetryQueue = new Queue<TelemetryPayload>("telemetry-pipeline", defaultQueueOptions);
+export const fsrsQueue = new Queue("fsrs-pipeline", defaultQueueOptions);
+export const ingestQueue = new Queue<IngestPayload>("ingest-pipeline", defaultQueueOptions);
 
-// Graceful shutdown helper for Next.js teardowns
+// Graceful teardown
 export async function closeQueues() {
   await Promise.all([
-    aiAnalysisQueue.close(),
-    problemIngestionQueue.close(),
-    telemetryAggregationQueue.close(),
-    fsrsSchedulingQueue.close(),
+    aiQueue.close(),
+    telemetryQueue.close(),
+    fsrsQueue.close(),
+    ingestQueue.close(),
   ]);
   redisConnection.quit();
 }
