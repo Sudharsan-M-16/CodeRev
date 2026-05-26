@@ -1,0 +1,230 @@
+// CodeRev - Competitive Programming Knowledge Management System
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector, pg_trgm]
+}
+
+enum Platform {
+  LEETCODE
+  CODEFORCES
+  ATCODER
+  CUSTOM
+}
+
+enum QualityLabel {
+  NONE
+  GREAT
+  MUST_REVISIT
+  ADVANCED
+}
+
+enum SolutionLinkType {
+  GITHUB
+  SUBMISSION
+  OTHER
+}
+
+enum DrillType {
+  IMPLEMENT
+  MINDSOLVE
+}
+
+enum DrillOutcome {
+  NAILED
+  MOSTLY
+  STRUGGLED
+  BLOCKED
+}
+
+model User {
+  id        String   @id // Clerk userId
+  email            String   @unique
+  username         String?  @unique
+  firstName        String?
+  lastName         String?
+  isPublicProfile  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  problems           Problem[]
+  tags               Tag[]
+  drillSessions      DrillSession[]
+  codeSnippets       CodeSnippet[]
+  createdProblemSets ProblemSet[]
+  subscribedSets     ProblemSetSubscription[]
+}
+
+model Problem {
+  id               String       @id @default(cuid())
+  userId           String
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title            String
+  platform         Platform
+  url              String?
+  originalRating   String?
+  normalizedDiff   Float?
+  qualityLabel     QualityLabel @default(NONE)
+  summary          String?
+  notes            String?      @db.Text
+  implNotes        String?      @db.Text
+  mathInvariant    String?      @db.Text
+  lastDrilledAt    DateTime?
+  nextDueAt        DateTime?
+  currentInterval  Int?
+  fsrsStability    Float?
+  fsrsDifficulty   Float?
+  fsrsReps         Int          @default(0)
+  fsrsLapses       Int          @default(0)
+  fsrsState        Int          @default(0) // 0=New, 1=Learning, 2=Review, 3=Relearning
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  embedding        Unsupported("vector(1536)")?
+
+  solutionLinks    SolutionLink[]
+  tags             ProblemTag[]
+  drillSessions    DrillSession[]
+  problemSetItems  ProblemSetItem[]
+
+  @@index([userId])
+  @@index([userId, platform])
+  @@index([userId, normalizedDiff])
+  @@index([userId, nextDueAt])
+  @@index([userId, qualityLabel])
+  @@index([userId, platform, normalizedDiff, nextDueAt])
+}
+
+model SolutionLink {
+  id        String           @id @default(cuid())
+  problemId String
+  type      SolutionLinkType
+  url       String
+  language  String?
+  label     String?
+  createdAt DateTime         @default(now())
+
+  problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  @@index([problemId])
+}
+
+model Tag {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name            String    @unique
+  slug            String    @unique
+  color           String    @default("#2563eb")
+  parentId        String?
+  notes           String?   @db.Text
+  implNotes       String?   @db.Text
+  drillCount      Int       @default(0)
+  lastDrilledAt   DateTime?
+  nextDueAt       DateTime?
+  currentInterval Int?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  parent        Tag?           @relation("TagHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children      Tag[]          @relation("TagHierarchy")
+  problems      ProblemTag[]
+  drillSessions DrillSession[]
+  codeSnippets  CodeSnippet[]
+
+  @@index([userId])
+  @@index([parentId])
+  @@index([nextDueAt])
+}
+
+model ProblemTag {
+  problemId String
+  tagId     String
+  assignedAt DateTime @default(now())
+
+  problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([problemId, tagId])
+  @@index([tagId])
+}
+
+model DrillSession {
+  id               String       @id @default(cuid())
+  userId           String
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problemId        String?
+  tagId            String?
+  drillType        DrillType
+  outcome          DrillOutcome
+  durationSeconds  Int?
+  previousInterval Int?
+  createdAt        DateTime     @default(now())
+
+  problem Problem? @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  tag     Tag?     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@index([problemId, drillType])
+  @@index([tagId, drillType])
+  @@index([createdAt])
+}
+
+model CodeSnippet {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tagId     String
+  tag       Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  title     String
+  code      String   @db.Text
+  language  String   @default("cpp")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([tagId])
+}
+
+model ProblemSet {
+  id          String   @id @default(cuid())
+  creatorId   String
+  creator     User     @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  title       String
+  description String?  @db.Text
+  isPublic    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items       ProblemSetItem[]
+  subscribers ProblemSetSubscription[]
+
+  @@index([creatorId])
+}
+
+model ProblemSetItem {
+  problemSetId String
+  problemSet   ProblemSet @relation(fields: [problemSetId], references: [id], onDelete: Cascade)
+  problemId    String
+  problem      Problem    @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  order        Int        @default(0)
+
+  @@id([problemSetId, problemId])
+  @@index([problemId])
+}
+
+model ProblemSetSubscription {
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problemSetId String
+  problemSet   ProblemSet @relation(fields: [problemSetId], references: [id], onDelete: Cascade)
+  subscribedAt DateTime   @default(now())
+
+  @@id([userId, problemSetId])
+  @@index([problemSetId])
+}

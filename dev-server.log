@@ -1,0 +1,25 @@
+
+> coderev@0.1.0 dev
+> next dev --turbopack
+
+   ▲ Next.js 15.5.18 (Turbopack)
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.0.200:3000
+   - Environments: .env
+
+ ✓ Starting...
+ ✓ Ready in 2s
+ ○ Compiling / ...
+ ✓ Compiled / in 2.4s
+ GET / 200 in 2761ms
+ ○ Compiling middleware ...
+ ✓ Compiled middleware in 868ms
+ ✓ Compiled middleware in 1ms
+ ✓ Compiled middleware in 2ms
+ ✓ Compiled in 80ms
+ ✓ Compiled middleware in 5ms
+ ✓ Compiled middleware in 2ms
+ ✓ Compiled middleware in 3ms
+ ✓ Compiled in 2.1s
+ ✓ Compiled middleware in 16ms
+ ✓ Compiled middleware in 2ms
