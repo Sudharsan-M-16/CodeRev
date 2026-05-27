@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { aiAnalysisQueue } from "@/lib/queue/client";
+import { aiQueue } from "@/lib/queue/client";
 import { jsonOk, handleApiError, jsonError } from "@/lib/api/response";
 
 export async function POST(request: NextRequest) {
@@ -17,11 +17,11 @@ export async function POST(request: NextRequest) {
 
     // Enqueue a background job for AI Auto-Tagging
     // The worker will pick this up from Redis asynchronously
-    const job = await aiAnalysisQueue.add(
+    const job = await aiQueue.add(
       "auto-tag", 
-      { problemId, description, userId },
+      { type: "auto-tag", problemId, description, userId },
       { 
-        jobId: `auto-tag-${problemId}`, // Idempotent: prevent duplicate jobs
+        jobId: `auto-tag-${problemId}`,
         removeOnComplete: true,
       }
     );

@@ -14,7 +14,7 @@ import { redisConnection, aiQueue, telemetryQueue, fsrsQueue, ingestQueue, AIJob
 const aiWorker = new Worker<AIJobPayload>(
   "ai-pipeline",
   async (job) => {
-    console.log(`[AI Worker] Processing ${job.data.type} for problem ${job.data.problemId}`);
+    console.log(`[AI Worker] Processing ${job.data.type}`);
 
     if (job.data.type === "auto-tag") {
       // Simulate API call to Anthropic
@@ -51,13 +51,141 @@ const aiWorker = new Worker<AIJobPayload>(
 
       return { success: true, vectors: vector.length };
     }
+
+    if (job.data.type === "generate-replay-insights") {
+      const d = job.data as Extract<AIJobPayload, { type: "generate-replay-insights" }>;
+      const { prisma } = await import("@/lib/db/prisma");
+      const { extractBehavioralHeuristics } = await import("@/lib/analytics/heuristics");
+      const { generateReplayInsights } = await import("@/lib/ai/insights");
+
+      // 1. Fetch raw timeline events
+      const events = await prisma.sessionEvent.findMany({
+        where: { drillSessionId: d.drillSessionId },
+        orderBy: { timestamp: "asc" }
+      });
+
+      if (events.length === 0) return { success: false, reason: "No events to analyze" };
+
+      // 2. Deterministic Heuristic Extraction
+      const heuristics = extractBehavioralHeuristics(events as any);
+
+      // 3. AI Pipeline (LLM analysis of heuristics)
+      const insights = await generateReplayInsights(d.problemTitle, heuristics, events as any);
+
+      // 4. Save Insights to DB linked to the DrillSession
+      if (insights.length > 0) {
+        await prisma.replayInsight.createMany({
+          data: insights.map(insight => ({
+            drillSessionId: d.drillSessionId,
+            type: insight.type,
+            title: insight.title,
+            description: insight.description,
+            timestampStart: insight.timestampStart,
+            timestampEnd: insight.timestampEnd,
+            confidence: insight.confidence,
+            recommendation: insight.recommendation
+          }))
+        });
+      }
+
+      return { success: true, insightsGenerated: insights.length };
+    }
+
+    if (job.data.type === "extract-mental-models") {
+      const { prisma } = await import("@/lib/db/prisma");
+      const { extractMentalModels } = await import("@/lib/ai/extractMentalModels");
+      const { generateProblemEmbedding } = await import("@/lib/ai/embeddings");
+
+      // 1. Fetch deep context
+      const session = await prisma.drillSession.findUnique({
+        where: { id: job.data.drillSessionId },
+        include: {
+          problem: true,
+          insights: true
+        }
+      });
+
+      if (!session || !session.problem) return { success: false, reason: "No session or problem found" };
+
+      // 2. Extract Models via LLM
+      const extractedModels = await extractMentalModels(
+        {
+          title: session.problem.title,
+          summary: session.problem.summary || "",
+          notes: session.problem.notes || ""
+        },
+        session.insights.map((i: any) => ({ title: i.title, description: i.description, type: i.type }))
+      );
+
+      let newModelsCount = 0;
+      let linkedModelsCount = 0;
+
+      // 3. Deduplicate & Store using pgvector Semantic Search
+      for (const model of extractedModels) {
+        // Generate embedding for the mental model description
+        const vector = await generateProblemEmbedding(`${model.name}: ${model.description}`);
+        const vectorString = `[${vector.join(',')}]`;
+
+        // Check if an existing semantically identical model exists for this user
+        const existing = await prisma.$queryRaw<any[]>`
+          SELECT id, 1 - (embedding <=> ${vectorString}::vector) as similarity
+          FROM "MentalModel"
+          WHERE "userId" = ${job.data.userId}
+            AND embedding <=> ${vectorString}::vector < 0.15 -- Very high similarity threshold
+          ORDER BY embedding <=> ${vectorString}::vector ASC
+          LIMIT 1;
+        `;
+
+        let modelId = "";
+
+        if (existing.length > 0) {
+          // Found existing model, link it!
+          modelId = existing[0].id;
+          linkedModelsCount++;
+        } else {
+          // Create new model
+          const created = await prisma.mentalModel.create({
+            data: {
+              userId: job.data.userId,
+              name: model.name,
+              type: model.type,
+              description: model.description,
+              confidence: model.confidence
+            }
+          });
+          modelId = created.id;
+          
+          // Attach vector
+          await prisma.$executeRawUnsafe(
+            `UPDATE "MentalModel" SET embedding = $1::vector WHERE id = $2`,
+            vectorString, 
+            modelId
+          );
+          newModelsCount++;
+        }
+
+        // Link the problem to this mental model
+        await prisma.problemMentalModel.upsert({
+          where: {
+            problemId_mentalModelId: {
+              problemId: session.problem.id,
+              mentalModelId: modelId
+            }
+          },
+          create: { problemId: session.problem.id, mentalModelId: modelId },
+          update: {}
+        });
+      }
+
+      return { success: true, newModelsCount, linkedModelsCount };
+    }
   },
   {
-    connection: redisConnection,
-    concurrency: 2, // Strict Rate Limiting: Max 2 concurrent AI API calls to prevent 429s
+    connection: redisConnection as any,
+    concurrency: 2,
     limiter: {
       max: 10,
-      duration: 1000, // Max 10 requests per second
+      duration: 1000,
     },
   }
 );
@@ -73,7 +201,7 @@ const fsrsWorker = new Worker(
     const { getNextFSRSState } = await import("@/lib/drills/fsrs");
 
     // Decoupled DB write: We handle the actual drill session creation and FSRS state update asynchronously.
-    const { problemId, tagId, outcome, durationSeconds, userId, timestamp } = job.data;
+    const { problemId, tagId, outcome, durationSeconds, userId, timestamp, clientSessionId } = job.data;
     
     // Simplification for the blueprint: Fetch problem, run FSRS, update problem.
     if (problemId) {
@@ -94,7 +222,14 @@ const fsrsWorker = new Worker(
 
         await prisma.$transaction([
           prisma.drillSession.create({
-            data: { userId, problemId, outcome, durationSeconds, drillType: "IMPLEMENT" }
+            data: { 
+              id: clientSessionId, // Override CUID with the deterministic ID from the frontend to link telemetry!
+              userId, 
+              problemId, 
+              outcome, 
+              durationSeconds, 
+              drillType: "IMPLEMENT" 
+            }
           }),
           prisma.problem.update({
             where: { id: problemId },
@@ -104,7 +239,7 @@ const fsrsWorker = new Worker(
       }
     }
   },
-  { connection: redisConnection }
+  { connection: redisConnection as any }
 );
 
 const telemetryWorker = new Worker(
@@ -113,7 +248,7 @@ const telemetryWorker = new Worker(
     console.log(`[Telemetry Worker] Aggregating data: ${job.name}`);
     await new Promise((res) => setTimeout(res, 500));
   },
-  { connection: redisConnection }
+  { connection: redisConnection as any }
 );
 
 const ingestWorker = new Worker(
@@ -137,7 +272,7 @@ const ingestWorker = new Worker(
       });
     }
   },
-  { connection: redisConnection }
+  { connection: redisConnection as any }
 );
 
 // 2. Setup Bull Board (Observability Dashboard)

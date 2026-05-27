@@ -6,6 +6,11 @@ const isPublicRoute = createRouteMatcher([
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
+  // Temporary bypass for local development without Clerk keys
+  if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
+    return;
+  }
+  
   if (!isPublicRoute(req)) {
     await auth.protect();
   }

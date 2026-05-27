@@ -40,6 +40,7 @@ export function getNextFSRSState(
     lapses: currentCard.lapses ?? 0,
     state: currentCard.state ?? State.New,
     last_review: currentCard.last_review,
+    learning_steps: currentCard.learning_steps ?? 0,
   };
 
   const rating = outcomeToFSRSRating(outcome);
@@ -48,7 +49,7 @@ export function getNextFSRSState(
   const schedulingCards = f.repeat(card, reviewDate);
   
   // Return the specific state for the chosen rating
-  const nextRecord = schedulingCards[rating].card;
+  const nextRecord = (schedulingCards as any)[rating].card;
 
   return {
     nextDueAt: nextRecord.due,

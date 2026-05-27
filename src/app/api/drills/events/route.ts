@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
 
     // Fire and forget batch to the ingest pipeline
     await ingestQueue.add("batch-session-events", {
+      type: "batch-session-events",
       userId,
       drillSessionId: data.drillSessionId,
       events: data.events

@@ -20,12 +20,17 @@ const nav = [
 ];
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const { userId } = await auth();
+  let userId = "";
+  try {
+    const authResult = await auth();
+    userId = authResult.userId || "";
+  } catch (e) {
+    // Missing publishableKey in local dev
+  }
 
   return (
-    <ClerkProvider>
-      <html lang="en">
-        <body className="min-h-screen bg-zinc-50 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100">
+    <html lang="en">
+      <body className="min-h-screen bg-zinc-50 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100">
         <header className="border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
           <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
             <Link href="/" className="text-lg font-bold tracking-tight">
@@ -55,6 +60,5 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         </PostHogProvider>
       </body>
     </html>
-    </ClerkProvider>
   );
 }

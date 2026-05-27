@@ -6,10 +6,16 @@ export const redisConnection = new IORedis(process.env.REDIS_URL || "redis://loc
   maxRetriesPerRequest: null,
 });
 
+// BullMQ expects { connection: IORedis } — using the instance directly satisfies ConnectionOptions
+export const bullMQConnection = { connection: redisConnection };
+
 // Strict Typings for Event-Driven Payloads
 export type AIJobPayload = 
   | { type: "auto-tag"; problemId: string; description: string; userId: string }
-  | { type: "generate-embeddings"; problemId: string; userId: string };
+  | { type: "recommend-bridge"; problemId: string; description: string; userId: string }
+  | { type: "generate-embeddings"; problemId: string; userId: string }
+  | { type: "generate-replay-insights"; drillSessionId: string; problemTitle: string; userId: string }
+  | { type: "extract-mental-models"; drillSessionId: string; userId: string };
 
 export type TelemetryPayload = 
   | { type: "sync-daily-heatmap"; userId: string }
@@ -24,15 +30,15 @@ export type IngestPayload =
     };
 
 const defaultQueueOptions: QueueOptions = {
-  connection: redisConnection,
+  connection: redisConnection as any,
   defaultJobOptions: {
-    attempts: 5, // 5 retries for AI/DB flakiness
+    attempts: 5,
     backoff: {
       type: "exponential",
-      delay: 2000, // Starts at 2s, then 4s, 8s, 16s...
+      delay: 2000,
     },
     removeOnComplete: 100,
-    removeOnFail: 500, // Keep more failures for debugging Dead Letters
+    removeOnFail: 500,
   },
 };
 

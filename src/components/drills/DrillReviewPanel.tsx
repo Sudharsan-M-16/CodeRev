@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { Button, Card, Select } from "@/components/ui/form";
 import { DifficultyBadge } from "@/components/ui/DifficultyBadge";
+import { DrillEditor } from "@/components/editor/DrillEditor";
 import type { Problem } from "@/types";
 
 type DrillType = "IMPLEMENT" | "MINDSOLVE";
@@ -33,6 +34,9 @@ export function DrillReviewPanel() {
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
   const [startedAt, setStartedAt] = useState(() => Date.now());
+  
+  // Generate a deterministic session ID for telemetry tracking before DB creation
+  const activeSessionIdRef = useRef(`session_${Math.random().toString(36).substring(2, 9)}_${Date.now()}`);
 
   const loadQueue = useCallback(async () => {
     setLoading(true);
@@ -57,10 +61,12 @@ export function DrillReviewPanel() {
         drillType: mode,
         outcome,
         durationSeconds: Math.round((Date.now() - startedAt) / 1000),
+        clientSessionId: activeSessionIdRef.current, // Link telemetry events to this outcome
       }),
     });
     setSubmitting(null);
     setRevealed({});
+    activeSessionIdRef.current = `session_${Math.random().toString(36).substring(2, 9)}_${Date.now()}`;
     loadQueue();
   }
 
@@ -131,6 +137,14 @@ export function DrillReviewPanel() {
                       {tag.name}
                     </span>
                   ))}
+                </div>
+              )}
+
+              {/* Active Telemetry Editor Workspace */}
+              {!isRevealed && (
+                <div className="mt-4">
+                  <h4 className="font-medium text-sm text-zinc-600 dark:text-zinc-400 mb-2">Active Workspace (Telemetry Enabled)</h4>
+                  <DrillEditor drillSessionId={activeSessionIdRef.current} />
                 </div>
               )}
 

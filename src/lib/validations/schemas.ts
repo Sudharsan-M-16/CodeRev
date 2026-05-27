@@ -60,6 +60,7 @@ export const reviewDrillSchema = z
     drillType: drillTypeSchema,
     outcome: drillOutcomeSchema,
     durationSeconds: z.number().int().min(0).optional().nullable(),
+    clientSessionId: z.string().optional(),
   })
   .refine((value) => Boolean(value.problemId) !== Boolean(value.tagId), {
     message: "Exactly one of problemId or tagId is required",

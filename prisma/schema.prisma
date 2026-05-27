@@ -59,6 +59,7 @@ model User {
   codeSnippets       CodeSnippet[]
   createdProblemSets ProblemSet[]
   subscribedSets     ProblemSetSubscription[]
+  mentalModels       MentalModel[]
 }
 
 model Problem {
@@ -92,6 +93,7 @@ model Problem {
   tags             ProblemTag[]
   drillSessions    DrillSession[]
   problemSetItems  ProblemSetItem[]
+  mentalModels     ProblemMentalModel[]
 
   @@index([userId])
   @@index([userId, platform])
@@ -137,6 +139,7 @@ model Tag {
   problems      ProblemTag[]
   drillSessions DrillSession[]
   codeSnippets  CodeSnippet[]
+  mentalModels  TagMentalModel[]
 
   @@index([userId])
   @@index([parentId])
@@ -167,8 +170,9 @@ model DrillSession {
   previousInterval Int?
   createdAt        DateTime     @default(now())
 
-  tag     Tag?     @relation(fields: [tagId], references: [id], onDelete: Cascade)
-  events  SessionEvent[]
+  tag      Tag?          @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  problem  Problem?      @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  events   SessionEvent[]
   insights ReplayInsight[]
 
   @@index([problemId, drillType])
@@ -261,5 +265,73 @@ model ReplayInsight {
   recommendation String?      @db.Text
   createdAt      DateTime     @default(now())
 
+  mentalModels   InsightMentalModel[]
+
   @@index([drillSessionId])
+}
+
+enum MentalModelType {
+  TRANSFORMATION
+  INVARIANT
+  PROOF_TECHNIQUE
+  DECOMPOSITION
+  OPTIMIZATION
+  STATE_COMPRESSION
+  HEURISTIC
+}
+
+model MentalModel {
+  id          String           @id @default(cuid())
+  userId      String
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String           // e.g., "Prefix Sum Difference Array"
+  type        MentalModelType
+  description String           @db.Text
+  confidence  Float            @default(1.0)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  
+  embedding   Unsupported("vector(1536)")?
+
+  problems    ProblemMentalModel[]
+  tags        TagMentalModel[]
+  insights    InsightMentalModel[]
+
+  @@index([userId])
+}
+
+model ProblemMentalModel {
+  problemId     String
+  mentalModelId String
+  assignedAt    DateTime @default(now())
+
+  problem       Problem     @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  mentalModel   MentalModel @relation(fields: [mentalModelId], references: [id], onDelete: Cascade)
+
+  @@id([problemId, mentalModelId])
+  @@index([mentalModelId])
+}
+
+model TagMentalModel {
+  tagId         String
+  mentalModelId String
+  assignedAt    DateTime @default(now())
+
+  tag           Tag         @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  mentalModel   MentalModel @relation(fields: [mentalModelId], references: [id], onDelete: Cascade)
+
+  @@id([tagId, mentalModelId])
+  @@index([mentalModelId])
+}
+
+model InsightMentalModel {
+  insightId     String
+  mentalModelId String
+  assignedAt    DateTime @default(now())
+
+  insight       ReplayInsight @relation(fields: [insightId], references: [id], onDelete: Cascade)
+  mentalModel   MentalModel   @relation(fields: [mentalModelId], references: [id], onDelete: Cascade)
+
+  @@id([insightId, mentalModelId])
+  @@index([mentalModelId])
 }

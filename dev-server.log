@@ -28,3 +28,21 @@
  ✓ Compiled in 1217ms
  ✓ Compiled middleware in 80ms
  ✓ Compiled middleware in 6ms
+ ○ Compiling / ...
+ ✓ Compiled / in 1590ms
+
+[35m
+[Clerk]:[0m You are running in keyless mode.
+You can [35mclaim your keys[0m by visiting https://dashboard.clerk.com/apps/claim?framework=nextjs&token=w958e0ny8qrkghljwiqp94ibudgy8izcw8flz2rp&return_url=http%3A%2F%2Flocalhost%3A3000%2F
+
+ GET / 200 in 3594ms
+ GET / 200 in 750ms
+ POST / 303 in 1940ms
+ GET / 200 in 674ms
+ GET / 200 in 501ms
+ ✓ Compiled middleware in 15ms
+ ✓ Compiled middleware in 6ms
+ ✓ Compiled middleware in 131ms
+ ✓ Compiled middleware in 374ms
+ ✓ Compiled in 2ms
+ ✓ Compiled in 3.9s

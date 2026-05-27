@@ -16,6 +16,7 @@ export interface DrillCompletedEvent {
   outcome: DrillOutcome;
   durationSeconds: number | null;
   timestamp: Date;
+  clientSessionId?: string;
 }
 
 export async function publishDrillCompleted(event: DrillCompletedEvent) {
@@ -28,11 +29,11 @@ export async function publishDrillCompleted(event: DrillCompletedEvent) {
   });
 
   // 2. Fan-out to Telemetry (Async aggregations)
-  await telemetryQueue.add("sync-daily-heatmap", { userId: event.userId }, {
+  await telemetryQueue.add("sync-daily-heatmap", { type: "sync-daily-heatmap", userId: event.userId }, {
     jobId: `telemetry-heatmap-${event.userId}-${event.timestamp.toISOString().split('T')[0]}`,
   });
 
-  await telemetryQueue.add("sync-radar-chart", { userId: event.userId }, {
+  await telemetryQueue.add("sync-radar-chart", { type: "sync-radar-chart", userId: event.userId }, {
     jobId: `telemetry-radar-${event.userId}`,
     delay: 5000, // Debounce massive recalculations if drilling multiple quickly
   });

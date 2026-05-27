@@ -61,6 +61,7 @@ export async function POST(request: NextRequest) {
       outcome: data.outcome,
       durationSeconds: data.durationSeconds ?? null,
       timestamp: new Date(),
+      clientSessionId: data.clientSessionId,
     });
 
     return jsonOk({ status: "processing" }, 202);
